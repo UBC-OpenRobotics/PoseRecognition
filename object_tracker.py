@@ -399,10 +399,10 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
 
                 #img_name = 'person' + '_' + str(counts[i]) + '.png'
                 img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                img_path = os.path.join(path, img_name )              
+                img_out_path = os.path.join(path, img_name )              
                 # save image
                 cropped_img.save(img_out_path, 'PNG')
-                cv2.imwrite(img_path, cropped_img)
+                #cv2.imwrite(img_path, cropped_img)
               else:
                 continue
 
@@ -422,7 +422,7 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
 
 yolo = Load_Yolo_model()
 #run_all(model, optimizer, scheduler, 10)
-model_path = '/home/matthew/Desktop/PersonTracking/model.pth'
+model_path = 'model.pth'
 #torch.save(model.state_dict(), model_path)
 model.load_state_dict(torch.load(model_path))
 model.eval()
