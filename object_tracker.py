@@ -48,10 +48,11 @@ args = parser.parse_args()
 #gdd.download_file_from_google_drive(file_id='1BEi1Cqi8yE9JJ9s3HPGJFBAi038MHjIc', dest_path='./data/classifier/standing/standing.zip', unzip=True)
 #gdd.download_file_from_google_drive(file_id='1z0f0uemZt4gdcp9mimnjI8TkYaVD-oYG', dest_path='./data/classifier/sitting/sitting.zip', unzip=True)
 xform = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor()])
+resize = transforms.Resize((224,224))
 dataset_full = datasets.ImageFolder('data/classifier', transform=xform)
 
 # Preparing for labeling
-label_font = ImageFont.truetype('Font/Calibri.ttf', 20)
+label_font = ImageFont.truetype('Font/Calibri.ttf', 14)
 
 
 ############# Preparing the Model and Dataset for Training #############
@@ -251,24 +252,26 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                 # construct image name and join it to path for saving crop properly
                 
                 # Get pose estimation and draw the label
+                cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
                 cropped_img = Image.fromarray(cropped_img)
+                cropped_img = resize(cropped_img)
                 cropped_img_for_model = xform(cropped_img)
-
                 cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
                 pose_prediction = model(cropped_img_for_model)
-                print()
-                if pose_prediction[0][0] > pose_prediction[0][1]:
+                _, preds = torch.max(pose_prediction, 1)      
+                if preds == 0:
                     label = "Sitting"
                 else:
                     label = "Standing"
                 image_editable = ImageDraw.Draw(cropped_img)
-                image_editable.text((15,15), label, (237, 230, 211), font=label_font)
+                image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
                 #img_name = 'person' + '_' + str(counts[i]) + '.png'
                 img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
                 path = 'output_images/' 
                 img_out_path = os.path.join(path, img_name )              
                 # save image
+
                 cropped_img.save(img_out_path, 'PNG')
                 #cv2.imwrite(img_out_path, cropped_img)
               else:
@@ -384,18 +387,19 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                 # construct image name and join it to path for saving crop properly
 
                 # Get pose estimation and draw the label
+                cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
                 cropped_img = Image.fromarray(cropped_img)
+                cropped_img = resize(cropped_img)
                 cropped_img_for_model = xform(cropped_img)
-
                 cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
                 pose_prediction = model(cropped_img_for_model)
-
-                if pose_prediction[0][0] > pose_prediction[0][1]:
+                _, preds = torch.max(pose_prediction, 1)      
+                if preds == 0:
                     label = "Sitting"
                 else:
                     label = "Standing"
                 image_editable = ImageDraw.Draw(cropped_img)
-                image_editable.text((15,15), label, (237, 230, 211), font=label_font)
+                image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
                 #img_name = 'person' + '_' + str(counts[i]) + '.png'
                 img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
