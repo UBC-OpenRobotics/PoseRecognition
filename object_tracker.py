@@ -45,8 +45,14 @@ args = parser.parse_args()
 
 # Preparing the Training Dataset
 # UNCOMMENT THE TWO LINES BELOW IF RUNNING THIS SCRIPT FOR THE FIRST TIME
+# Dataset (Small)
 #gdd.download_file_from_google_drive(file_id='1BEi1Cqi8yE9JJ9s3HPGJFBAi038MHjIc', dest_path='./data/classifier/standing/standing.zip', unzip=True)
 #gdd.download_file_from_google_drive(file_id='1z0f0uemZt4gdcp9mimnjI8TkYaVD-oYG', dest_path='./data/classifier/sitting/sitting.zip', unzip=True)
+
+# Dataset (Medium)
+#gdd.download_file_from_google_drive(file_id='16P91uG96lxhXB5kQvj7sxJdNCphKuNgk', dest_path='./data/classifier/standing/standing.zip', unzip=True)
+#gdd.download_file_from_google_drive(file_id='1M20vI-3iOxixmJ4BRgM_Xk5GiQ2A6GHg', dest_path='./data/classifier/sitting/sitting.zip', unzip=True)
+
 xform = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor()])
 resize = transforms.Resize((224,224))
 dataset_full = datasets.ImageFolder('data/classifier', transform=xform)
