@@ -53,6 +53,10 @@ args = parser.parse_args()
 #gdd.download_file_from_google_drive(file_id='16P91uG96lxhXB5kQvj7sxJdNCphKuNgk', dest_path='./data/classifier/standing/standing.zip', unzip=True)
 #gdd.download_file_from_google_drive(file_id='1M20vI-3iOxixmJ4BRgM_Xk5GiQ2A6GHg', dest_path='./data/classifier/sitting/sitting.zip', unzip=True)
 
+# Dataset (Medium+)
+#gdd.download_file_from_google_drive(file_id='11apMr3VzpfuM57kEcLK07e7jkYwdtIsH', dest_path='./data/classifier/standing/standing.zip', unzip=True)
+#gdd.download_file_from_google_drive(file_id='1M5zMbnp2qb6VRXg0IJ2tgiLzdA5bmAKK', dest_path='./data/classifier/sitting/sitting.zip', unzip=True)
+
 xform = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor()])
 resize = transforms.Resize((224,224))
 dataset_full = datasets.ImageFolder('data/classifier', transform=xform)
@@ -405,7 +409,7 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                 else:
                     label = "Standing"
                 image_editable = ImageDraw.Draw(cropped_img)
-                image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                mage_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
                 #img_name = 'person' + '_' + str(counts[i]) + '.png'
                 img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'

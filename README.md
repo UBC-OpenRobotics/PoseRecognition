@@ -22,13 +22,12 @@ pip install -r ./requirements.txt
 Cd into where you've cloned the repository. The pose estimation script is a modified version of Nick's object tracker.
 By default, the script will take webcam footage as an input. Once it detects a person, it will crop out the bounding box
 as a separate image and perform pose prediction. Including an optional argument "--image" will instead use any images in the
-'IMAGES' folder.
+'IMAGES' folder. Before running the script, ensure you have a directory "output_images" in the repo.
 ```
 python3 object_tracker.py
 python3 object_tracker.py --image 
 ```
-The script runs and crops images correctly but labeling is unfinished.
+The script runs and crops images correctly and labels with decent accuracy. The only issue is with blurry images.
 
 To do:
-- Change how we handle the labels (How we take the confidence values and get a label from them)
 - Change how we output the labels (Instead of directly drawing on the cropped photos)
