@@ -38,9 +38,11 @@ from google_drive_downloader import GoogleDriveDownloader as gdd
 from PIL import Image, ImageFont, ImageDraw 
 
 video_path   = ""
+skip_rate = 30
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--images', action='store_true', help = "Use a folder of images instead of video feed")
+parser.add_argument('--video', action='store_true', help = "Use a video named 'input_vid.mp4' instead of a live video feed")
 args = parser.parse_args()
 
 # Preparing the Training Dataset
@@ -148,8 +150,15 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
     
     if args.images == True:
         use_image = True
+        use_video = False
         print("Reading images")
+    elif args.video == True:
+        skip_count = 0
+        use_image = False
+        use_video = True
+        video_path   = "IMAGES/input_vid.mp4"
     else:
+        skip_count = 0
         use_image = False
         print("Getting webcam feed")
 
@@ -163,9 +172,12 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
 
     if use_image == False:
         # by default VideoCapture returns float instead of int
-        width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        #width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+        #height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        width = 224
+        height = 224
         fps = int(vid.get(cv2.CAP_PROP_FPS))
+        #codec = cv2.cv.CV_FOURCC('X','V,'I','D')
         codec = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(output_path, codec, fps, (width, height)) # output_path must be .mp4
 
@@ -294,10 +306,11 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                   cv2.destroyAllWindows()
                   break
       # End of Image While Loop
-######### Code below uses a live video feed ##############################
+######### Code below uses a video feed (Live or prerecorded) ##############################
     if (use_image == False):
       while True:
-          _, frame = vid.read()
+          skip_count = skip_count + 1
+          _, frame = vid.read()                    
           try:
               original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
               original_frame = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
@@ -307,127 +320,128 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
           image_data = image_preprocess(np.copy(original_frame), [input_size, input_size])
           #image_data = tf.expand_dims(image_data, 0)
           image_data = image_data[np.newaxis, ...].astype(np.float32)
-
-          t1 = time.time()
-          if YOLO_FRAMEWORK == "tf":
-              pred_bbox = Yolo.predict(image_data)
-          elif YOLO_FRAMEWORK == "trt":
-              batched_input = tf.constant(image_data)
-              result = Yolo(batched_input)
-              pred_bbox = []
-              for key, value in result.items():
-                  value = value.numpy()
-                  pred_bbox.append(value)
+          if skip_count % skip_rate == 0:
+              t1 = time.time()
+              if YOLO_FRAMEWORK == "tf":
+                  pred_bbox = Yolo.predict(image_data)
+              elif YOLO_FRAMEWORK == "trt":
+                  batched_input = tf.constant(image_data)
+                  result = Yolo(batched_input)
+                  pred_bbox = []
+                  for key, value in result.items():
+                      value = value.numpy()
+                      pred_bbox.append(value)
           
-          #t1 = time.time()
-          #pred_bbox = Yolo.predict(image_data)
-          t2 = time.time()
+              #t1 = time.time()
+              #pred_bbox = Yolo.predict(image_data)
+              t2 = time.time()
           
-          pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
-          pred_bbox = tf.concat(pred_bbox, axis=0)
+              pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
+              pred_bbox = tf.concat(pred_bbox, axis=0)
 
-          bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
-          bboxes = nms(bboxes, iou_threshold, method='nms')
+              bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
+              bboxes = nms(bboxes, iou_threshold, method='nms')
 
-          # extract bboxes to boxes (x, y, width, height), scores and names
-          boxes, scores, names = [], [], []
-          for bbox in bboxes:
-              if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
-                  boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
-                  scores.append(bbox[4])
-                  names.append(NUM_CLASS[int(bbox[5])])
+              # extract bboxes to boxes (x, y, width, height), scores and names
+              boxes, scores, names = [], [], []
+              for bbox in bboxes:
+                  if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
+                      boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
+                      scores.append(bbox[4])
+                      names.append(NUM_CLASS[int(bbox[5])])
 
-          # Obtain all the detections for the given frame.
-          boxes = np.array(boxes) 
-          names = np.array(names)
-          scores = np.array(scores)
-          features = np.array(encoder(original_frame, boxes))
-          detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
+              # Obtain all the detections for the given frame.
+              boxes = np.array(boxes) 
+              names = np.array(names)
+              scores = np.array(scores)
+              features = np.array(encoder(original_frame, boxes))
+              detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
   zip(boxes, scores, names, features)]
 
-          # Pass detections to the deepsort object and obtain the track information.
-          tracker.predict()
-          tracker.update(detections)
+              # Pass detections to the deepsort object and obtain the track information.
+              tracker.predict()
+              tracker.update(detections)
 
-          # Obtain info from the tracks
-          tracked_bboxes = []
-          for track in tracker.tracks:
-              if not track.is_confirmed() or track.time_since_update > 5:
-                  continue 
-              bbox = track.to_tlbr() # Get the corrected/predicted bounding box
-              class_name = track.get_class() #Get the class name of particular object
-              tracking_id = track.track_id # Get the ID for the particular track
-              index = key_list[val_list.index(class_name)] # Get predicted object index by object name
-              tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
+              # Obtain info from the tracks
+              tracked_bboxes = []
+              for track in tracker.tracks:
+                  if not track.is_confirmed() or track.time_since_update > 5:
+                      continue 
+                  bbox = track.to_tlbr() # Get the corrected/predicted bounding box
+                  class_name = track.get_class() #Get the class name of particular object
+                  tracking_id = track.track_id # Get the ID for the particular track
+                  index = key_list[val_list.index(class_name)] # Get predicted object index by object name
+                  tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
 
-          # draw detection on frame
-          image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
+              # draw detection on frame
+              image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
 
-          t3 = time.time()
-          times.append(t2-t1)
-          times_2.append(t3-t1)
+              t3 = time.time()
+              times.append(t2-t1)
+              times_2.append(t3-t1)
           
-          times = times[-20:]
-          times_2 = times_2[-20:]
+              times = times[-20:]
+              times_2 = times_2[-20:]
 
-          ms = sum(times)/len(times)*1000
-          fps = 1000 / ms
-          fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
+              ms = sum(times)/len(times)*1000
+              fps = 1000 / ms
+              fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
           
-          image = cv2.putText(image, "Time: {:.1f} FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
+              image = cv2.putText(image, "Time: {:.1f} FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
 
-          # draw original yolo detection
-          #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
+              # draw original yolo detection
+              #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
 
-          # path = '/home/matthew/Desktop/PersonTracking/output_images/'
-          path = 'output_images/'
-          allowed_class = "person"
-          num_objects = len(names)
-          # classes = .................................
-          # create dictionary to hold count of objects for image name
-          counts = dict()
-          for i in range(num_objects):
-              # get count of class for part of image name
-              if names[i] == allowed_class:
-                counts[i] = counts.get(i, 0) + 1
-                # get box coords
-                x, y, w, h = boxes[i]
-                # crop detection from image (take an additional 5 pixels around all edges)
-                cropped_img = original_frame.copy()[y:y+h,x:x+w,:]
-                # construct image name and join it to path for saving crop properly
+              # path = '/home/matthew/Desktop/PersonTracking/output_images/'
+              path = 'output_images/'
+              allowed_class = "person"
+              num_objects = len(names)
+              # classes = .................................
+              # create dictionary to hold count of objects for image name
+              counts = dict()
+              for i in range(num_objects):
+                  # get count of class for part of image name
+                  if names[i] == allowed_class:
+                    counts[i] = counts.get(i, 0) + 1
+                    # get box coords
+                    x, y, w, h = boxes[i]
+                    # crop detection from image (take an additional 5 pixels around all edges)
+                    cropped_img = original_frame.copy()[y:y+h,x:x+w,:]
+                    # construct image name and join it to path for saving crop properly
 
-                # Get pose estimation and draw the label
-                cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
-                cropped_img = Image.fromarray(cropped_img)
-                cropped_img = resize(cropped_img)
-                cropped_img_for_model = xform(cropped_img)
-                cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
-                pose_prediction = model(cropped_img_for_model)
-                _, preds = torch.max(pose_prediction, 1)      
-                if preds == 0:
-                    label = "Sitting"
-                else:
-                    label = "Standing"
-                image_editable = ImageDraw.Draw(cropped_img)
-                mage_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                    # Get pose estimation and draw the label
+                    cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+                    cropped_img = Image.fromarray(cropped_img)
+                    cropped_img = resize(cropped_img)
+                    cropped_img_for_model = xform(cropped_img)
+                    cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
+                    pose_prediction = model(cropped_img_for_model)
+                    _, preds = torch.max(pose_prediction, 1)      
+                    if preds == 0:
+                        label = "Sitting"
+                    else:
+                        label = "Standing"
+                    image_editable = ImageDraw.Draw(cropped_img)
+                    image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
-                #img_name = 'person' + '_' + str(counts[i]) + '.png'
-                img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                img_out_path = os.path.join(path, img_name )              
-                # save image
-                cropped_img.save(img_out_path, 'PNG')
-                #cv2.imwrite(img_path, cropped_img)
-              else:
-                continue
+                    #img_name = 'person' + '_' + str(counts[i]) + '.png'
+                    img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                    img_out_path = os.path.join(path, img_name )              
+                    # save image
+                    cropped_img.save(img_out_path, 'PNG')
+                    #cv2.imwrite(img_path, cropped_img)
+                  else:
+                    continue
 
-          print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
-          if output_path != '': out.write(image)
-          if show:
-              cv2.imshow('output', image)
+              print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
+              to_write = cv2.imread(img_out_path)
+              if output_path != '': out.write(to_write)
+              if show:
+                  cv2.imshow('output', image)
               
-              if cv2.waitKey(25) & 0xFF == ord("q"):
-                  cv2.destroyAllWindows()
-                  break
+                  if cv2.waitKey(25) & 0xFF == ord("q"):
+                      cv2.destroyAllWindows()
+                      break
 ########### End of code for live video feed ########################
 
 
