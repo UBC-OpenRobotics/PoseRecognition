@@ -302,8 +302,7 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                 #cropped_img.save(img_out_path, 'PNG')
                 ##################################################
                 # save entry in dictionary
-                image_path_split = input_path.split("/")
-                output_dict[image_path_split[-1]] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
+                output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
               else:
                 continue
 
