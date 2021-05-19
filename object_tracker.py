@@ -137,329 +137,355 @@ def run_all(model, optimizer, scheduler, n_epochs):
         #print(f"epoch {epoch}: train loss {loss_train:.4f} acc {acc_train:.4f}, test loss {loss_test:.4f} acc {acc_test:.4f}")
 
 def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, CLASSES=YOLO_COCO_CLASSES, score_threshold=0.3, iou_threshold=0.45, rectangle_colors='', Track_only = []):
-    # Definition of the parameters
-    max_cosine_distance = 0.7
-    nn_budget = None
-    
-    #initialize deep sort object
-    model_filename = 'model_data/mars-small128.pb'
-    encoder = gdet.create_box_encoder(model_filename, batch_size=1) #original batch_size
-    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
-    tracker = Tracker(metric)
+    try:
+        # Definition of the parameters
+        max_cosine_distance = 0.7
+        nn_budget = None
+        
+        #initialize deep sort object
+        model_filename = 'model_data/mars-small128.pb'
+        encoder = gdet.create_box_encoder(model_filename, batch_size=1) #original batch_size
+        metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+        tracker = Tracker(metric)
 
-    times, times_2 = [], []
-    
-    # Initialize Dictionary for Image : Bounding Box, Class
-    output_dict = dict()
+        times, times_2 = [], []
+        
+        # Initialize Dictionary for Image : Bounding Box, Class
+        output_dict = dict()
 
-    if args.images == True:
-        use_image = True # This makes the input come from images in the IMAGES folder
-        use_video = False
-        print("Reading images")
-    elif args.video == True:
-        skip_count = 0
-        use_image = False
-        use_video = True # This makes the input come from a video in the path below
-        video_path   = "IMAGES/input_vid.mp4"
-    else:
-        skip_count = 0
-        use_image = False # This makes the input come from the webcam
-        print("Getting webcam feed")
+        if args.images == True:
+            use_image = True # This makes the input come from images in the IMAGES folder
+            use_video = False
+            print("Reading images")
+        elif args.video == True:
+            skip_count = 0
+            use_image = False
+            use_video = True # This makes the input come from a video in the path below
+            video_path   = "IMAGES/input_vid.mp4"
+        else:
+            skip_count = 0
+            use_image = False # This makes the input come from the webcam
+            print("Getting webcam feed")
 
-    if use_image == True:
-        image_folder_path = 'IMAGES/'
-	# image_folder_path = '/home/matthew/Desktop/PersonTracking/IMAGES/'
-    elif video_path:
-        vid = cv2.VideoCapture(video_path) # detect on video
-    else:
-        vid = cv2.VideoCapture(-1) # detect from webcam
+        if use_image == True:
+            image_folder_path = 'IMAGES/'
+        # image_folder_path = '/home/matthew/Desktop/PersonTracking/IMAGES/'
+        elif video_path:
+            vid = cv2.VideoCapture(video_path) # detect on video
+        else:
+            vid = cv2.VideoCapture(-1) # detect from webcam
 
-    if use_image == False:
-        # by default VideoCapture returns float instead of int
-        #width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
-        #height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        width = 224
-        height = 224
-        fps = int(vid.get(cv2.CAP_PROP_FPS))
-        #codec = cv2.cv.CV_FOURCC('X','V,'I','D')
-        codec = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(output_path, codec, fps, (width, height)) # output_path must be .mp4
+        if use_image == False:
+            # by default VideoCapture returns float instead of int
+            #width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+            #height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            width = 224
+            height = 224
+            fps = int(vid.get(cv2.CAP_PROP_FPS))
+            #codec = cv2.cv.CV_FOURCC('X','V,'I','D')
+            codec = cv2.VideoWriter_fourcc(*'XVID')
+            #out = cv2.VideoWriter(output_path, codec, fps, (width, height)) # output_path must be .mp4
 
-    NUM_CLASS = read_class_names(CLASSES)
-    key_list = list(NUM_CLASS.keys()) 
-    val_list = list(NUM_CLASS.values())
-    if (use_image == True):
-      for image_path in os.listdir(image_folder_path):
-          input_path = os.path.join(image_folder_path,image_path)
-          frame = cv2.imread(input_path)
-          try:
-              original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-              original_frame = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
-          except:
-              break
-          
-          image_data = image_preprocess(np.copy(original_frame), [input_size, input_size])
-          #image_data = tf.expand_dims(image_data, 0)
-          image_data = image_data[np.newaxis, ...].astype(np.float32)
-
-          t1 = time.time()
-          if YOLO_FRAMEWORK == "tf":
-              pred_bbox = Yolo.predict(image_data)
-          elif YOLO_FRAMEWORK == "trt":
-              batched_input = tf.constant(image_data)
-              result = Yolo(batched_input)
-              pred_bbox = []
-              for key, value in result.items():
-                  value = value.numpy()
-                  pred_bbox.append(value)
-          
-          #t1 = time.time()
-          #pred_bbox = Yolo.predict(image_data)
-          t2 = time.time()
-          
-          pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
-          pred_bbox = tf.concat(pred_bbox, axis=0)
-
-          bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
-          bboxes = nms(bboxes, iou_threshold, method='nms')
-
-          # extract bboxes to boxes (x, y, width, height), scores and names
-          boxes, scores, names = [], [], []
-          for bbox in bboxes:
-              if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
-                  boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
-                  scores.append(bbox[4])
-                  names.append(NUM_CLASS[int(bbox[5])])
-
-          # Obtain all the detections for the given frame.
-          boxes = np.array(boxes) 
-          names = np.array(names)
-          scores = np.array(scores)
-          features = np.array(encoder(original_frame, boxes))
-          detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
-  zip(boxes, scores, names, features)]
-
-          # Pass detections to the deepsort object and obtain the track information.
-          tracker.predict()
-          tracker.update(detections)
-
-          # Obtain info from the tracks
-          tracked_bboxes = []
-          for track in tracker.tracks:
-              if not track.is_confirmed() or track.time_since_update > 5:
-                  continue 
-              bbox = track.to_tlbr() # Get the corrected/predicted bounding box
-              class_name = track.get_class() #Get the class name of particular object
-              tracking_id = track.track_id # Get the ID for the particular track
-              index = key_list[val_list.index(class_name)] # Get predicted object index by object name
-              tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
-
-          # draw detection on frame
-          image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
-
-          # draw original yolo detection
-          #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
-
-          path = 'output_images/'         
-          # path = '/home/matthew/Desktop/PersonTracking/output_images/'
-          allowed_class = "person"
-          num_objects = len(names)
-          # classes = .................................
-          # create dictionary to hold count of objects for image name
-          counts = dict()
-          for i in range(num_objects):
-              # get count of class for part of image name
-              if names[i] == allowed_class:
-                counts[i] = counts.get(i, 0) + 1
-		# get box coords
-                x, y, w, h = boxes[i]
-                # crop detection from image (take an additional 5 pixels around all edges)
-                cropped_img = original_frame.copy()[y:y+h,x:x+w,:]                
-                # construct image name and join it to path for saving crop properly
+        NUM_CLASS = read_class_names(CLASSES)
+        key_list = list(NUM_CLASS.keys()) 
+        val_list = list(NUM_CLASS.values())
+        if (use_image == True):
+            for image_path in os.listdir(image_folder_path):
+                input_path = os.path.join(image_folder_path,image_path)
+                frame = cv2.imread(input_path)
+                try:
+                    original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    original_frame = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
+                except:
+                    break
                 
-                # Get pose estimation and draw the label
-                cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
-                cropped_img = Image.fromarray(cropped_img)
-                cropped_img = resize(cropped_img)
-                cropped_img_for_model = xform(cropped_img)
-                cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
-                pose_prediction = model(cropped_img_for_model)
-                _, preds = torch.max(pose_prediction, 1)      
-                if preds == 0:
-                    label = "Sitting"
-                else:
-                    label = "Standing"
+                image_data = image_preprocess(np.copy(original_frame), [input_size, input_size])
+                #image_data = tf.expand_dims(image_data, 0)
+                image_data = image_data[np.newaxis, ...].astype(np.float32)
+
+                t1 = time.time()
+                if YOLO_FRAMEWORK == "tf":
+                    pred_bbox = Yolo.predict(image_data)
+                elif YOLO_FRAMEWORK == "trt":
+                    batched_input = tf.constant(image_data)
+                    result = Yolo(batched_input)
+                    pred_bbox = []
+                    for key, value in result.items():
+                        value = value.numpy()
+                        pred_bbox.append(value)
                 
-		############### Saving the Image ################## This section is commented out for integration 		
-                #image_editable = ImageDraw.Draw(cropped_img)
-                #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
-
-                #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                #path = 'output_images/' 
-                #img_out_path = os.path.join(path, img_name )              
+                #t1 = time.time()
+                #pred_bbox = Yolo.predict(image_data)
+                t2 = time.time()
                 
-                # save image
-                #cropped_img.save(img_out_path, 'PNG')
-                ##################################################
-                # save entry in dictionary
-                output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
-              else:
-                continue
+                pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
+                pred_bbox = tf.concat(pred_bbox, axis=0)
 
-          if show:
-              cv2.imshow('output', image)
-              
-              if cv2.waitKey(25) & 0xFF == ord("q"):
-                  cv2.destroyAllWindows()
-                  break
-      # End of Image While Loop
-######### Code below uses a video feed (Live or prerecorded) ##############################
-    if (use_image == False):
-      while True:
-          skip_count = skip_count + 1
-          _, frame = vid.read()                    
-          try:
-              original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-              original_frame = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
-          except:
-              break
-          
-          image_data = image_preprocess(np.copy(original_frame), [input_size, input_size])
-          #image_data = tf.expand_dims(image_data, 0)
-          image_data = image_data[np.newaxis, ...].astype(np.float32)
-          if skip_count % skip_rate == 0:
-              t1 = time.time()
-              if YOLO_FRAMEWORK == "tf":
-                  pred_bbox = Yolo.predict(image_data)
-              elif YOLO_FRAMEWORK == "trt":
-                  batched_input = tf.constant(image_data)
-                  result = Yolo(batched_input)
-                  pred_bbox = []
-                  for key, value in result.items():
-                      value = value.numpy()
-                      pred_bbox.append(value)
-          
-              #t1 = time.time()
-              #pred_bbox = Yolo.predict(image_data)
-              t2 = time.time()
-          
-              pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
-              pred_bbox = tf.concat(pred_bbox, axis=0)
+                bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
+                bboxes = nms(bboxes, iou_threshold, method='nms')
 
-              bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
-              bboxes = nms(bboxes, iou_threshold, method='nms')
+                # extract bboxes to boxes (x, y, width, height), scores and names
+                boxes, scores, names = [], [], []
+                for bbox in bboxes:
+                    if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
+                        boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
+                        scores.append(bbox[4])
+                        names.append(NUM_CLASS[int(bbox[5])])
 
-              # extract bboxes to boxes (x, y, width, height), scores and names
-              boxes, scores, names = [], [], []
-              for bbox in bboxes:
-                  if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
-                      boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
-                      scores.append(bbox[4])
-                      names.append(NUM_CLASS[int(bbox[5])])
+                # Obtain all the detections for the given frame.
+                boxes = np.array(boxes) 
+                names = np.array(names)
+                scores = np.array(scores)
+                features = np.array(encoder(original_frame, boxes))
+                detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
+        zip(boxes, scores, names, features)]
 
-              # Obtain all the detections for the given frame.
-              boxes = np.array(boxes) 
-              names = np.array(names)
-              scores = np.array(scores)
-              features = np.array(encoder(original_frame, boxes))
-              detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
-  zip(boxes, scores, names, features)]
+                # Pass detections to the deepsort object and obtain the track information.
+                tracker.predict()
+                tracker.update(detections)
 
-              # Pass detections to the deepsort object and obtain the track information.
-              tracker.predict()
-              tracker.update(detections)
+                # Obtain info from the tracks
+                tracked_bboxes = []
+                for track in tracker.tracks:
+                    if not track.is_confirmed() or track.time_since_update > 5:
+                        continue 
+                    bbox = track.to_tlbr() # Get the corrected/predicted bounding box
+                    class_name = track.get_class() #Get the class name of particular object
+                    tracking_id = track.track_id # Get the ID for the particular track
+                    index = key_list[val_list.index(class_name)] # Get predicted object index by object name
+                    tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
 
-              # Obtain info from the tracks
-              tracked_bboxes = []
-              for track in tracker.tracks:
-                  if not track.is_confirmed() or track.time_since_update > 5:
-                      continue 
-                  bbox = track.to_tlbr() # Get the corrected/predicted bounding box
-                  class_name = track.get_class() #Get the class name of particular object
-                  tracking_id = track.track_id # Get the ID for the particular track
-                  index = key_list[val_list.index(class_name)] # Get predicted object index by object name
-                  tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
+                # draw detection on frame
+                image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
 
-              # draw detection on frame
-              image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
+                # draw original yolo detection
+                #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
 
-              t3 = time.time()
-              times.append(t2-t1)
-              times_2.append(t3-t1)
-          
-              times = times[-20:]
-              times_2 = times_2[-20:]
+                path = 'output_images/'         
+                # path = '/home/matthew/Desktop/PersonTracking/output_images/'
+                allowed_class = "person"
+                num_objects = len(names)
+                # classes = .................................
+                # create dictionary to hold count of objects for image name
+                counts = dict()
+                for i in range(num_objects):
+                    # get count of class for part of image name
+                    if names[i] == allowed_class:
+                        counts[i] = counts.get(i, 0) + 1
+                # get box coords
+                        x, y, w, h = boxes[i]
+                        # crop detection from image (take an additional 5 pixels around all edges)
+                        cropped_img = original_frame.copy()[y:y+h,x:x+w,:]                
+                        # construct image name and join it to path for saving crop properly
+                        
+                        # Get pose estimation and draw the label
+                        cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+                        cropped_img = Image.fromarray(cropped_img)
+                        cropped_img = resize(cropped_img)
+                        cropped_img_for_model = xform(cropped_img)
+                        cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
+                        pose_prediction = model(cropped_img_for_model)
+                        _, preds = torch.max(pose_prediction, 1)      
+                        if preds == 0:
+                            label = "Sitting"
+                        else:
+                            label = "Standing"
+                        
+                ############### Saving the Image ################## This section is commented out for integration 		
+                        #image_editable = ImageDraw.Draw(cropped_img)
+                        #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
-              ms = sum(times)/len(times)*1000
-              fps = 1000 / ms
-              fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
-          
-              image = cv2.putText(image, "Time: {:.1f} FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
-
-              # draw original yolo detection
-              #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
-
-              # path = '/home/matthew/Desktop/PersonTracking/output_images/'
-              path = 'output_images/'
-              allowed_class = "person"
-              num_objects = len(names)
-              # classes = .................................
-              # create dictionary to hold count of objects for image name
-              counts = dict()
-              for i in range(num_objects):
-                  # get count of class for part of image name
-                  if names[i] == allowed_class:
-                    counts[i] = counts.get(i, 0) + 1
-                    # get box coords
-                    x, y, w, h = boxes[i]
-                    # crop detection from image (take an additional 5 pixels around all edges)
-                    cropped_img = original_frame.copy()[y:y+h,x:x+w,:]
-                    # construct image name and join it to path for saving crop properly
-
-                    # Get pose estimation and draw the label
-                    cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
-                    cropped_img = Image.fromarray(cropped_img)
-                    cropped_img = resize(cropped_img)
-                    cropped_img_for_model = xform(cropped_img)
-                    cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
-                    pose_prediction = model(cropped_img_for_model)
-                    _, preds = torch.max(pose_prediction, 1)      
-                    if preds == 0:
-                        label = "Sitting"
+                        #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                        #path = 'output_images/' 
+                        #img_out_path = os.path.join(path, img_name )              
+                        
+                        # save image
+                        #cropped_img.save(img_out_path, 'PNG')
+                        ##################################################
+                        # save entry in dictionary
+                        output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
                     else:
-                        label = "Standing"
-                    image_editable = ImageDraw.Draw(cropped_img)
-                    image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                        continue
+                # Creating a Json #
+                json_object = json.dumps(output_dict, indent = 4)
+        
+                # Writing to sample.json
+                with open("output.json", "w") as outfile:
+                    outfile.write(json_object)
 
-                    #img_name = 'person' + '_' + str(counts[i]) + '.png'
-                    img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                    img_out_path = os.path.join(path, img_name )              
-                    # save image
-                    cropped_img.save(img_out_path, 'PNG')
-                    #cv2.imwrite(img_path, cropped_img)
-                  else:
-                    continue
 
-              print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
-              to_write = cv2.imread(img_out_path)
-              if output_path != '': out.write(to_write)
-              if show:
-                  cv2.imshow('output', image)
-              
-                  if cv2.waitKey(25) & 0xFF == ord("q"):
-                      cv2.destroyAllWindows()
-                      break
-########### End of code for live video feed ########################
+                if show:
+                    cv2.imshow('output', image)
+                    
+                    if cv2.waitKey(25) & 0xFF == ord("q"):
+                        cv2.destroyAllWindows()
+                        break
+            # End of Image While Loop
+        ######### Code below uses a video feed (Live or prerecorded) ##############################
+        if (use_image == False):
+            while True:
+                skip_count = skip_count + 1
+                _, frame = vid.read()                    
+                try:
+                    original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    original_frame = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
+                except:
+                    break
+                
+                image_data = image_preprocess(np.copy(original_frame), [input_size, input_size])
+                #image_data = tf.expand_dims(image_data, 0)
+                image_data = image_data[np.newaxis, ...].astype(np.float32)
+                if skip_count % skip_rate == 0:
+                    t1 = time.time()
+                    if YOLO_FRAMEWORK == "tf":
+                        pred_bbox = Yolo.predict(image_data)
+                    elif YOLO_FRAMEWORK == "trt":
+                        batched_input = tf.constant(image_data)
+                        result = Yolo(batched_input)
+                        pred_bbox = []
+                        for key, value in result.items():
+                            value = value.numpy()
+                            pred_bbox.append(value)
+                
+                    #t1 = time.time()
+                    #pred_bbox = Yolo.predict(image_data)
+                    t2 = time.time()
+                
+                    pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
+                    pred_bbox = tf.concat(pred_bbox, axis=0)
 
-    # Creating a Json #
-    json_object = json.dumps(output_dict, indent = 4)
-  
-    # Writing to sample.json
-    with open("output.json", "w") as outfile:
-        outfile.write(json_object)
+                    bboxes = postprocess_boxes(pred_bbox, original_frame, input_size, score_threshold)
+                    bboxes = nms(bboxes, iou_threshold, method='nms')
 
-    cv2.destroyAllWindows()
+                    # extract bboxes to boxes (x, y, width, height), scores and names
+                    boxes, scores, names = [], [], []
+                    for bbox in bboxes:
+                        if len(Track_only) !=0 and NUM_CLASS[int(bbox[5])] in Track_only or len(Track_only) == 0:
+                            boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
+                            scores.append(bbox[4])
+                            names.append(NUM_CLASS[int(bbox[5])])
 
+                    # Obtain all the detections for the given frame.
+                    boxes = np.array(boxes) 
+                    names = np.array(names)
+                    scores = np.array(scores)
+                    features = np.array(encoder(original_frame, boxes))
+                    detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in 
+        zip(boxes, scores, names, features)]
+
+                    # Pass detections to the deepsort object and obtain the track information.
+                    tracker.predict()
+                    tracker.update(detections)
+
+                    # Obtain info from the tracks
+                    tracked_bboxes = []
+                    for track in tracker.tracks:
+                        if not track.is_confirmed() or track.time_since_update > 5:
+                            continue 
+                        bbox = track.to_tlbr() # Get the corrected/predicted bounding box
+                        class_name = track.get_class() #Get the class name of particular object
+                        tracking_id = track.track_id # Get the ID for the particular track
+                        index = key_list[val_list.index(class_name)] # Get predicted object index by object name
+                        tracked_bboxes.append(bbox.tolist() + [tracking_id, index]) # Structure data, that we could use it with our draw_bbox function
+
+                    # draw detection on frame
+                    image = draw_bbox(original_frame.copy(), tracked_bboxes, CLASSES=CLASSES, tracking=True)
+
+                    t3 = time.time()
+                    times.append(t2-t1)
+                    times_2.append(t3-t1)
+                
+                    times = times[-20:]
+                    times_2 = times_2[-20:]
+
+                    ms = sum(times)/len(times)*1000
+                    fps = 1000 / ms
+                    fps2 = 1000 / (sum(times_2)/len(times_2)*1000)
+                
+                    image = cv2.putText(image, "Time: {:.1f} FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
+
+                    # draw original yolo detection
+                    #image = draw_bbox(image, bboxes, CLASSES=CLASSES, show_label=False, rectangle_colors=rectangle_colors, tracking=True)
+
+                    # path = '/home/matthew/Desktop/PersonTracking/output_images/'
+                    path = 'output_images/'
+                    allowed_class = "person"
+                    num_objects = len(names)
+                    # classes = .................................
+                    # create dictionary to hold count of objects for image name
+                    counts = dict()
+                    for i in range(num_objects):
+                        # get count of class for part of image name
+                        if names[i] == allowed_class:
+                            counts[i] = counts.get(i, 0) + 1
+                            # get box coords
+                            x, y, w, h = boxes[i]
+                            # crop detection from image (take an additional 5 pixels around all edges)
+                            cropped_img = original_frame.copy()[y:y+h,x:x+w,:]
+                            # construct image name and join it to path for saving crop properly
+
+                            # Get pose estimation and draw the label
+                            cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+                            cropped_img = Image.fromarray(cropped_img)
+                            cropped_img = resize(cropped_img)
+                            cropped_img_for_model = xform(cropped_img)
+                            cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
+                            pose_prediction = model(cropped_img_for_model)
+                            _, preds = torch.max(pose_prediction, 1)      
+                            if preds == 0:
+                                label = "Sitting"
+                            else:
+                                label = "Standing"
+                            
+                ############### Saving the Image ################## This section is commented out for integration 				
+                            #image_editable = ImageDraw.Draw(cropped_img)
+                            #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+
+                            #img_name = 'person' + '_' + str(counts[i]) + '.png'
+                            #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                            #img_out_path = os.path.join(path, img_name )              
+                            # save image
+                            #cropped_img.save(img_out_path, 'PNG')
+                        ###################################################
+            
+                            # save entry in dictionary
+                            output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
+                        
+                        else:
+                            continue
+
+                    print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
+
+                    ######## The two lines below are for writing to a video ######## Disabled for Integration              
+                    # to_write = cv2.imread(img_out_path)
+                    # if output_path != '': out.write(to_write)
+                    ################################################################
+
+                    if show:
+                        cv2.imshow('output', image)
+                    
+                        if cv2.waitKey(25) & 0xFF == ord("q"):
+                            cv2.destroyAllWindows()
+                            break
+        ########### End of code for live video feed ########################
+
+            # Creating a Json #
+            json_object = json.dumps(output_dict, indent = 4)
+        
+            # Writing to sample.json
+            with open("output.json", "w") as outfile:
+                outfile.write(json_object)
+
+            cv2.destroyAllWindows()
+
+    except KeyboardInterrupt:
+        if (output_dict):
+            # Creating a Json #
+            json_object = json.dumps(output_dict, indent = 4)
+        
+            # Writing to sample.json
+            with open("output.json", "w") as outfile:
+                outfile.write(json_object)
 
 yolo = Load_Yolo_model()
 #run_all(model, optimizer, scheduler, 10)
@@ -467,4 +493,6 @@ model_path = 'model.pth'
 #torch.save(model.state_dict(), model_path)
 model.load_state_dict(torch.load(model_path))
 model.eval()
-Object_tracking(yolo, video_path, "detection.mp4", input_size=YOLO_INPUT_SIZE, show=True, iou_threshold=0.1, rectangle_colors=(255,0,0), Track_only = ["person"])
+Object_tracking(yolo, video_path, "detection.mp4", input_size=YOLO_INPUT_SIZE, show=True, iou_threshold=0.1, rectangle_colors=(255,0,0), 
+
+Track_only = ["person"])
