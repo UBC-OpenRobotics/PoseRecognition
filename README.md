@@ -27,7 +27,7 @@ individual frames and do the pose estimation on them. Change the "frame_skip" va
 skip before each estimate. Before running the script, ensure you have a directory called "output_images" in the repo.
 ```
 python3 object_tracker.py
-python3 object_tracker.py --image 
+python3 object_tracker.py --images 
 python3 object_tracker.py --video
 ```
 The script runs and crops images correctly and labels with decent accuracy. The only issue is with blurry images.

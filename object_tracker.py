@@ -14,6 +14,7 @@
 # in your terminal
 
 import os
+import json
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import argparse
 import cv2
@@ -148,18 +149,21 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
 
     times, times_2 = [], []
     
+    # Initialize Dictionary for Image : Bounding Box, Class
+    output_dict = dict()
+
     if args.images == True:
-        use_image = True
+        use_image = True # This makes the input come from images in the IMAGES folder
         use_video = False
         print("Reading images")
     elif args.video == True:
         skip_count = 0
         use_image = False
-        use_video = True
+        use_video = True # This makes the input come from a video in the path below
         video_path   = "IMAGES/input_vid.mp4"
     else:
         skip_count = 0
-        use_image = False
+        use_image = False # This makes the input come from the webcam
         print("Getting webcam feed")
 
     if use_image == True:
@@ -285,17 +289,21 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                     label = "Sitting"
                 else:
                     label = "Standing"
-                image_editable = ImageDraw.Draw(cropped_img)
-                image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                
+		############### Saving the Image ################## This section is commented out for integration 		
+                #image_editable = ImageDraw.Draw(cropped_img)
+                #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
-                #img_name = 'person' + '_' + str(counts[i]) + '.png'
-                img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                path = 'output_images/' 
-                img_out_path = os.path.join(path, img_name )              
+                #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                #path = 'output_images/' 
+                #img_out_path = os.path.join(path, img_name )              
+                
                 # save image
-
-                cropped_img.save(img_out_path, 'PNG')
-                #cv2.imwrite(img_out_path, cropped_img)
+                #cropped_img.save(img_out_path, 'PNG')
+                ##################################################
+                # save entry in dictionary
+                image_path_split = input_path.split("/")
+                output_dict[image_path_split[-1]] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
               else:
                 continue
 
@@ -444,6 +452,12 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                       break
 ########### End of code for live video feed ########################
 
+    # Creating a Json #
+    json_object = json.dumps(output_dict, indent = 4)
+  
+    # Writing to sample.json
+    with open("output.json", "w") as outfile:
+        outfile.write(json_object)
 
     cv2.destroyAllWindows()
 
