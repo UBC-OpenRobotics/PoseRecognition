@@ -1,17 +1,4 @@
-#================================================================
-#
-#   File name   : object_tracker.py
-#   Author      : PyLessons
-#   Created date: 2020-09-17
-#   Website     : https://pylessons.com/
-#   GitHub      : https://github.com/pythonlessons/TensorFlow-2.x-YOLOv3
-#   Description : code to track detected object from video or webcam
-#
-#================================================================
-# NOTE: To run this, please run
-# pip install googledrivedownloader
-# pip install pillow
-# in your terminal
+
 
 import os
 import json
@@ -184,7 +171,7 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
             fps = int(vid.get(cv2.CAP_PROP_FPS))
             #codec = cv2.cv.CV_FOURCC('X','V,'I','D')
             codec = cv2.VideoWriter_fourcc(*'XVID')
-            #out = cv2.VideoWriter(output_path, codec, fps, (width, height)) # output_path must be .mp4
+            out = cv2.VideoWriter(output_path, codec, fps, (width, height)) # output_path must be .mp4
 
         NUM_CLASS = read_class_names(CLASSES)
         key_list = list(NUM_CLASS.keys()) 
@@ -292,15 +279,15 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             label = "Standing"
                         
                 ############### Saving the Image ################## This section is commented out for integration 		
-                        #image_editable = ImageDraw.Draw(cropped_img)
-                        #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                        image_editable = ImageDraw.Draw(cropped_img)
+                        image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
-                        #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                        #path = 'output_images/' 
-                        #img_out_path = os.path.join(path, img_name )              
+                        img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                        path = 'output_images/' 
+                        img_out_path = os.path.join(path, img_name )              
                         
                         # save image
-                        #cropped_img.save(img_out_path, 'PNG')
+                        cropped_img.save(img_out_path, 'PNG')
                         ##################################################
                         # save entry in dictionary
                         output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
@@ -437,17 +424,20 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             else:
                                 label = "Standing"
                             
-                ############### Saving the Image ################## This section is commented out for integration 				
-                            #image_editable = ImageDraw.Draw(cropped_img)
-                            #image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+               		    # saving the Image				
+                            image_editable = ImageDraw.Draw(cropped_img)
+                            image_editable.text((15,15), label, (0, 252, 76), font=label_font)
 
-                            #img_name = 'person' + '_' + str(counts[i]) + '.png'
-                            #img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
-                            #img_out_path = os.path.join(path, img_name )              
-                            # save image
-                            #cropped_img.save(img_out_path, 'PNG')
-                        ###################################################
-            
+                            img_name = 'person' + '_' + str(counts[i]) + '.png'
+                            img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
+                            img_out_path = os.path.join(path, img_name )               
+                            # save image (Comment out the line below to not save images)
+                            cropped_img.save(img_out_path, 'PNG')
+            			
+			    # saving image to video (Comment out the 2 lines below to not write to a video)
+                            to_write = cv2.imread(img_out_path)
+                            if output_path != '': out.write(to_write)
+
                             # save entry in dictionary
                             output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
                         
@@ -455,11 +445,6 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             continue
 
                     print("Time: {:.2f}ms, Detection FPS: {:.1f}, total FPS: {:.1f}".format(ms, fps, fps2))
-
-                    ######## The two lines below are for writing to a video ######## Disabled for Integration              
-                    # to_write = cv2.imread(img_out_path)
-                    # if output_path != '': out.write(to_write)
-                    ################################################################
 
                     if show:
                         cv2.imshow('output', image)
@@ -486,6 +471,7 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
             # Writing to sample.json
             with open("output.json", "w") as outfile:
                 outfile.write(json_object)
+        cv2.destroyAllWindows()
 
 yolo = Load_Yolo_model()
 #run_all(model, optimizer, scheduler, 10)
