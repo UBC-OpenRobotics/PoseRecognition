@@ -164,10 +164,10 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
 
         if use_image == False:
             # by default VideoCapture returns float instead of int
-            #width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
-            #height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            width = 224
-            height = 224
+            width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            #width = 224
+            #height = 224
             fps = int(vid.get(cv2.CAP_PROP_FPS))
             #codec = cv2.cv.CV_FOURCC('X','V,'I','D')
             codec = cv2.VideoWriter_fourcc(*'XVID')
@@ -410,11 +410,14 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             x, y, w, h = boxes[i]
                             # crop detection from image (take an additional 5 pixels around all edges)
                             cropped_img = original_frame.copy()[y:y+h,x:x+w,:]
+                            image_copy = image.copy()
                             # construct image name and join it to path for saving crop properly
 
                             # Get pose estimation and draw the label
                             cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+                            image_copy = cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB)
                             cropped_img = Image.fromarray(cropped_img)
+                            image_copy = Image.fromarray(image_copy)
                             cropped_img = resize(cropped_img)
                             cropped_img_for_model = xform(cropped_img)
                             cropped_img_for_model = cropped_img_for_model.unsqueeze(0)
@@ -427,7 +430,10 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             
                		    # saving the Image				
                             image_editable = ImageDraw.Draw(cropped_img)
-                            image_editable.text((15,15), label, (0, 252, 76), font=label_font)
+                            editable_copy = ImageDraw.Draw(image_copy)
+                            image_editable.text(((15),(15)), label, (0, 252, 76), font=label_font)
+                            editable_copy.rectangle(((x + 95, y - 20), (x + 140, y)), fill=(0, 8, 213))                            
+                            editable_copy.text(((x + 100),(y - 15)), label, (45, 192, 255), font=label_font)
 
                             img_name = 'person' + '_' + str(counts[i]) + '.png'
                             img_name = 'person' + '_' + str(random.sample(range(1000000), 1)) + '.png'
@@ -438,10 +444,11 @@ def Object_tracking(Yolo, video_path, output_path, input_size=416, show=False, C
                             # saving image to dictionary for the video(s) later
                             if  track.track_id in out_video_dict:
                                 curr_list = out_video_dict[track.track_id]
-                                curr_list.append(cropped_img)
+                                curr_list.append(image_copy)
                             else:    
                                 out_video_dict[track.track_id] = list()
-                                curr_list.append(cropped_img)
+                                curr_list = out_video_dict[track.track_id]
+                                curr_list.append(image_copy)
                                 
                             # save entry in dictionary
                             output_dict[track.track_id] = str(x) + ", " + str(y) + ", " + str(w) + ", " + str(h) + ", " + label
